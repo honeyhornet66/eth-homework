@@ -4,6 +4,11 @@ test = "."
 out = "out"
 libs = ["lib"]
 solc = "0.8.26"
+auto_detect_remappings = true
+ignored_paths = [
+    "lib/openzeppelin-contracts/certora",
+    "lib/openzeppelin-contracts/fv"
+]
 
 # Optimizer for gas efficiency
 optimizer = true
