@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Manual Bridge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#0a0a0f;font-family:'JetBrains Mono','SF Mono',monospace;color:#e0e0e0;display:flex;flex-direction:column;align-items:center;padding:40px 16px}
+input:focus,button:focus{outline:none}
+.card{position:relative;width:100%;max-width:480px}
+.card::before{content:'';position:absolute;inset:-1px;border-radius:17px;background:linear-gradient(135deg,#627EEA33,#F0B90B33,#627EEA33);z-index:0}
+.card-inner{position:relative;z-index:1;background:#0f0f1a;border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:20px}
+.label{font-size:11px;color:#555570;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;display:block}
+.input-field{width:100%;background:#0d0d18;border:1px solid #1a1a2e;border-radius:10px;padding:14px 16px;color:#e0e0e0;font-family:'JetBrains Mono',monospace;font-size:13px;transition:border-color .2s}
+.input-field:focus{border-color:#627EEA55}
+.input-field::placeholder{color:#333350}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+.scan-btn{background:#12122a;border:1px solid #1a1a2e;border-radius:10px;padding:0 18px;color:#627EEA;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .2s}
+.scan-btn:hover{background:#1a1a2e}
+.scan-btn:disabled{opacity:.4;cursor:not-allowed}
+.chain-btn{flex:1;border-radius:12px;padding:16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .2s;font-family:inherit}
+.chain-btn:hover{opacity:.85}
+.swap-btn{width:40px;height:40px;border-radius:50%;background:#12122a;border:1px solid #1a1a2e;color:#555570;font-size:18px;cursor:pointer;transition:all .3s ease;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.swap-btn:hover{transform:scale(1.15) rotate(180deg)}
+.bridge-btn{width:100%;padding:18px;border-radius:12px;border:none;color:#fff;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+.bridge-btn:disabled{opacity:.3;cursor:not-allowed}
+.bridge-btn:not(:disabled):hover{filter:brightness(1.2);transform:translateY(-1px)}
+.slip-btn{flex:1;border-radius:8px;padding:10px 0;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid #1a1a2e;background:#0d0d18;color:#555570}
+.slip-btn.active{background:#627EEA22;border-color:#627EEA55;color:#627EEA}
+.info-row{display:flex;justify-content:space-between;font-size:12px}
+.info-label{color:#555570}
+.info-val{color:#e0e0e0}
+.status-box{padding:12px;border-radius:10px;font-size:12px;margin-top:4px;line-height:1.6;white-space:pre-wrap;word-break:break-all}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.spinner{display:inline-block;animation:spin 1s linear infinite}
+.unit-label{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:11px;color:#555570;font-weight:600;pointer-events:none}
+</style>
+</head>
+<body>
+
+<div style="width:100%;max-width:480px;margin-bottom:32px;display:flex;justify-content:space-between;align-items:center">
+  <div>
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px">◈ Manual Bridge</div>
+    <div style="font-size:11px;color:#555570;margin-top:4px">LayerZero OFT Direct Send</div>
+  </div>
+  <button id="walletBtn" onclick="connectWallet()" style="background:linear-gradient(135deg,#627EEA,#4a6bd4);border:none;border-radius:10px;padding:10px 18px;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;cursor:pointer">Connect Wallet</button>
+</div>
+
+<div class="card">
+<div class="card-inner">
+
+  <!-- Token CA -->
+  <div>
+    <label class="label">Token Contract (OFT)</label>
+    <div style="display:flex;gap:8px">
+      <input id="tokenCA" class="input-field" placeholder="0x... OFT contract address" oninput="onTokenInput()"/>
+      <button id="scanBtn" class="scan-btn" onclick="scanToken()" disabled>Scan</button>
+    </div>
+    <div id="scanResult" style="margin-top:8px;font-size:11px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"></div>
+  </div>
+
+  <!-- Route -->
+  <div>
+    <label class="label">Route</label>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button id="fromChainBtn" class="chain-btn" style="border:1px solid #627EEA33;background:#627EEA12">
+        <span style="font-size:24px">⟠</span>
+        <div style="text-align:left">
+          <div style="font-size:10px;color:#555570;font-weight:600;letter-spacing:1px">FROM</div>
+          <div id="fromName" style="font-size:14px;color:#627EEA;font-weight:700;font-family:'Space Grotesk',sans-serif">Ethereum</div>
+        </div>
+      </button>
+      <button class="swap-btn" onclick="swapChains()">⇄</button>
+      <button id="toChainBtn" class="chain-btn" style="border:1px solid #F0B90B33;background:#F0B90B12">
+        <span style="font-size:24px">⬡</span>
+        <div style="text-align:left">
+          <div style="font-size:10px;color:#555570;font-weight:600;letter-spacing:1px">TO</div>
+          <div id="toName" style="font-size:14px;color:#F0B90B;font-weight:700;font-family:'Space Grotesk',sans-serif">BSC</div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Amount -->
+  <div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+      <label class="label" style="margin-bottom:0">Amount</label>
+      <button id="maxBtn" onclick="setMax()" style="background:none;border:none;color:#627EEA;font-size:11px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-weight:600;display:none">MAX</button>
+    </div>
+    <input id="amountInput" class="input-field" placeholder="0.00" oninput="updateBtn()" style="font-size:20px;font-weight:700;padding:18px 16px"/>
+  </div>
+
+  <!-- Native Fee -->
+  <div>
+    <label class="label">Native Fee (<span id="feeUnit">ETH</span>)</label>
+    <div style="position:relative">
+      <input id="nativeFeeInput" class="input-field" placeholder="0.002" value="0.002" style="font-size:14px;padding-right:50px"/>
+      <span id="feeUnitLabel" class="unit-label">ETH</span>
+    </div>
+  </div>
+
+  <!-- Slippage + Gas -->
+  <div style="display:flex;gap:12px">
+    <div style="flex:1">
+      <label class="label">Slippage %</label>
+      <div style="display:flex;gap:4px">
+        <button class="slip-btn active" onclick="pickSlip(this,1)">1%</button>
+        <button class="slip-btn" onclick="pickSlip(this,3)">3%</button>
+        <button class="slip-btn" onclick="pickSlip(this,5)">5%</button>
+      </div>
+    </div>
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;align-items:center">
+        <label class="label" style="margin-bottom:0">Gas Price (<span id="gasUnit">ETH</span>)</label>
+        <span id="nativeBal" style="font-size:11px;color:#555570;display:none"></span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button id="autoGasBtn" class="slip-btn active" onclick="gasAuto()">Auto</button>
+        <div style="position:relative;flex:1.5">
+          <input id="customGas" class="input-field" placeholder="Auto" oninput="gasCustom()" style="text-align:center;padding:10px 4px;font-size:12px"/>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div id="infoBox" style="display:none;background:#0a0a14;border-radius:10px;padding:14px;flex-direction:column;gap:8px;font-size:12px;border:1px solid #1a1a2e">
+    <div class="info-row"><span class="info-label">nativeFee</span><span id="infoFee" class="info-val">-</span></div>
+    <div class="info-row"><span class="info-label">minAmountLD</span><span id="infoMin" class="info-val">-</span></div>
+    <div class="info-row"><span class="info-label">dstEid</span><span id="infoDst" class="info-val">-</span></div>
+  </div>
+
+  <!-- Bridge -->
+  <button id="bridgeBtn" class="bridge-btn" disabled style="background:#1a1a2e" onclick="doBridge()">Connect Wallet First</button>
+  <div id="statusBox" style="display:none" class="status-box"></div>
+
+</div>
+</div>
+
+<script>
+var CHAINS = {};
+
+// Load chain config from backend
+fetch('/api/chains').then(r=>r.json()).then(function(data){ CHAINS=data; }).catch(function(){
+  // fallback
+  CHAINS = {
+    eth:{name:'Ethereum',chainHex:'0x1',dstEid:30101,native:'ETH',color:'#627EEA',icon:'⟠'},
+    bsc:{name:'BSC',chainHex:'0x38',dstEid:30102,native:'BNB',color:'#F0B90B',icon:'⬡'}
+  };
+});
+
+var ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function approve(address, uint256) returns (bool)",
+  "function allowance(address, address) view returns (uint256)"
+];
+
+var OFT_ABI = [
+  "function send(tuple(uint32 dstEid, bytes32 to, uint256 amountLD, uint256 minAmountLD, bytes extraOptions, bytes composeMsg, bytes oftCmd), tuple(uint256 nativeFee, uint256 lzTokenFee), address) payable returns (tuple(bytes32, uint64, tuple(uint256, uint256)), tuple(uint256, uint256))",
+  "function token() view returns (address)"
+];
+
+var S = {
+  wallet:null, provider:null, signer:null,
+  from:'eth', to:'bsc',
+  slippage:1, gasMode:'auto', gasEth:null,
+  scanned:false, decimals:18, symbol:'', balance:null, balanceFmt:'0',
+  oftCA:null, tokenAddr:null, isAdapter:false
+};
+
+// ---- Wallet ----
+async function connectWallet() {
+  if(!window.ethereum){ showStatus('error','MetaMask가 설치되어 있지 않습니다.'); return; }
+  try {
+    var accs = await window.ethereum.request({method:'eth_requestAccounts'});
+    S.wallet=accs[0];
+    S.provider=new ethers.providers.Web3Provider(window.ethereum);
+    S.signer=S.provider.getSigner();
+    var btn=document.getElementById('walletBtn');
+    btn.textContent='● '+S.wallet.slice(0,6)+'...'+S.wallet.slice(-4);
+    btn.style.cssText='background:#0f2e1a;border:1px solid #1a4a2a;border-radius:10px;padding:10px 18px;color:#4ade80;font-family:JetBrains Mono,monospace;font-size:12px;font-weight:600;cursor:pointer';
+    await switchChain();
+    updateScan(); updateBtn(); updateUnits(); hideStatus(); fetchNativeBalance();
+  } catch(e){ showStatus('error','지갑 연결 실패: '+e.message); }
+}
+
+async function switchChain() {
+  var c=CHAINS[S.from];
+  if(!c) return;
+  try {
+    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:c.chainHex}]});
+  } catch(e) {
+    if(e.code===4902 && S.from==='bsc'){
+      await window.ethereum.request({method:'wallet_addEthereumChain',params:[{
+        chainId:'0x38',chainName:'BNB Smart Chain',
+        nativeCurrency:{name:'BNB',symbol:'BNB',decimals:18},
+        rpcUrls:['https://bsc-dataseed1.binance.org'],
+        blockExplorerUrls:['https://bscscan.com']
+      }]});
+    }
+  }
+  S.provider=new ethers.providers.Web3Provider(window.ethereum);
+  S.signer=S.provider.getSigner();
+}
+
+// ---- Chains ----
+function swapChains() {
+  var t=S.from; S.from=S.to; S.to=t;
+  S.scanned=false;
+  document.getElementById('scanResult').innerHTML='';
+  document.getElementById('maxBtn').style.display='none';
+  document.getElementById('infoBox').style.display='none';
+  renderChains(); updateBtn(); updateUnits();
+  if(S.wallet){ switchChain().then(fetchNativeBalance); }
+}
+
+function renderChains() {
+  var f=CHAINS[S.from], t=CHAINS[S.to];
+  if(!f||!t) return;
+  var fb=document.getElementById('fromChainBtn');
+  fb.style.borderColor=f.color+'33'; fb.style.background=f.color+'12';
+  fb.querySelector('span').textContent=f.icon;
+  document.getElementById('fromName').textContent=f.name;
+  document.getElementById('fromName').style.color=f.color;
+  var tb=document.getElementById('toChainBtn');
+  tb.style.borderColor=t.color+'33'; tb.style.background=t.color+'12';
+  tb.querySelector('span').textContent=t.icon;
+  document.getElementById('toName').textContent=t.name;
+  document.getElementById('toName').style.color=t.color;
+}
+
+function updateUnits() {
+  var n = CHAINS[S.from] ? CHAINS[S.from].native : 'ETH';
+  document.getElementById('feeUnit').textContent=n;
+  document.getElementById('feeUnitLabel').textContent=n;
+  document.getElementById('gasUnit').textContent=n;
+}
+
+// ---- Scan ----
+function onTokenInput() {
+  S.scanned=false;
+  document.getElementById('scanResult').innerHTML='';
+  document.getElementById('maxBtn').style.display='none';
+  document.getElementById('infoBox').style.display='none';
+  updateScan(); updateBtn();
+}
+function updateScan() {
+  document.getElementById('scanBtn').disabled=!(document.getElementById('tokenCA').value.trim()&&S.wallet);
+}
+
+async function scanToken() {
+  var ca=document.getElementById('tokenCA').value.trim();
+  if(!ca||!S.wallet) return;
+  var sb=document.getElementById('scanBtn'), sr=document.getElementById('scanResult');
+  sb.disabled=true; sb.innerHTML='<span class="spinner">⟳</span>'; sr.innerHTML='';
+  try {
+    if(!ethers.utils.isAddress(ca)) throw new Error('유효하지 않은 주소');
+    await switchChain();
+
+    // send() 함수 존재 확인 (selector: c7c7f5b3)
+    var code=await S.provider.getCode(ca);
+    if(code==='0x') throw new Error('컨트랙트가 아닙니다');
+    if(code.indexOf('c7c7f5b3')===-1) throw new Error('send() 함수가 없습니다');
+
+    var oft=new ethers.Contract(ca,OFT_ABI,S.provider);
+    S.oftCA=ca;
+
+    var tokenAddr;
+    try { tokenAddr=await oft.token(); S.isAdapter=(tokenAddr.toLowerCase()!==ca.toLowerCase()); }
+    catch(e){ tokenAddr=ca; S.isAdapter=false; }
+    S.tokenAddr=tokenAddr;
+
+    var tk=new ethers.Contract(tokenAddr,ERC20_ABI,S.provider);
+    S.decimals=await tk.decimals();
+    S.symbol=await tk.symbol();
+    S.balance=await tk.balanceOf(S.wallet);
+    S.balanceFmt=ethers.utils.formatUnits(S.balance,S.decimals);
+
+    S.scanned=true;
+    var d=parseFloat(S.balanceFmt).toLocaleString(undefined,{maximumFractionDigits:4});
+    sr.innerHTML='<span class="tag" style="background:#0f2e1a;color:#4ade80">send() found</span>'+
+      '<span style="color:#555570">Balance: <span style="color:#e0e0e0" id="balDisplay">'+d+' '+S.symbol+'</span></span>';
+    document.getElementById('maxBtn').style.display='block';
+    updateBtn();
+  } catch(e) {
+    sr.innerHTML='<span class="tag" style="background:#2e0f0f;color:#ef4444">'+e.message+'</span>';
+    S.scanned=false; updateBtn();
+  }
+  sb.disabled=false; sb.textContent='Scan';
+}
+
+// ---- Slippage / Gas ----
+function pickSlip(b,v){ b.parentElement.querySelectorAll('.slip-btn').forEach(function(x){x.classList.remove('active')}); b.classList.add('active'); S.slippage=v; }
+function gasAuto(){ S.gasMode='auto'; S.gasEth=null; document.getElementById('autoGasBtn').classList.add('active'); document.getElementById('customGas').value=''; }
+function gasCustom(){ var v=document.getElementById('customGas').value.trim(); if(v&&!isNaN(parseFloat(v))){ S.gasMode='custom'; S.gasEth=v; document.getElementById('autoGasBtn').classList.remove('active'); }}
+
+async function fetchNativeBalance() {
+  var nb=document.getElementById('nativeBal');
+  if(!S.wallet||!S.provider){ nb.style.display='none'; return; }
+  try {
+    var bal=await S.provider.getBalance(S.wallet);
+    var ns=CHAINS[S.from]?CHAINS[S.from].native:'ETH';
+    var fmt=parseFloat(ethers.utils.formatEther(bal)).toFixed(4);
+    nb.textContent=fmt+' '+ns;
+    nb.style.display='block';
+  } catch(e){ nb.style.display='none'; }
+}
+function setMax(){ document.getElementById('amountInput').value=S.balanceFmt; updateBtn(); }
+
+// ---- Button ----
+function updateBtn() {
+  var btn=document.getElementById('bridgeBtn'), amt=document.getElementById('amountInput').value.trim();
+  var f=CHAINS[S.from], t=CHAINS[S.to];
+  if(!f||!t) return;
+  if(!S.wallet){btn.disabled=true;btn.style.background='#1a1a2e';btn.textContent='Connect Wallet First';}
+  else if(!S.scanned){btn.disabled=true;btn.style.background='#1a1a2e';btn.textContent='Scan Token First';}
+  else if(!amt||parseFloat(amt)<=0){btn.disabled=true;btn.style.background='#1a1a2e';btn.textContent='Enter Amount';}
+  else{btn.disabled=false;btn.style.background='linear-gradient(135deg,'+f.color+','+t.color+')';btn.textContent='Bridge to '+t.name;}
+}
+
+// ---- Bridge ----
+async function doBridge() {
+  var btn=document.getElementById('bridgeBtn');
+  var amtStr=document.getElementById('amountInput').value.trim();
+  if(!amtStr||!S.scanned||!S.wallet) return;
+  btn.disabled=true; btn.textContent='Processing...';
+
+  try {
+    await switchChain();
+    var oft=new ethers.Contract(S.oftCA,OFT_ABI,S.signer);
+    var dstEid=CHAINS[S.to].dstEid;
+    var toB32=ethers.utils.hexZeroPad(S.wallet,32);
+    var amountLD=ethers.utils.parseUnits(amtStr,S.decimals);
+
+    if(amountLD.gt(S.balance)) throw new Error('잔액 부족: '+S.balanceFmt+' '+S.symbol);
+
+    var slipBps=Math.floor((100-S.slippage)*100);
+    var minAmountLD=amountLD.mul(slipBps).div(10000);
+    var sp=[dstEid,toB32,amountLD,minAmountLD,'0x','0x','0x'];
+
+    var feeStr=document.getElementById('nativeFeeInput').value.trim()||'0.002';
+    var nativeFee=ethers.utils.parseEther(feeStr);
+    var ns=CHAINS[S.from].native;
+
+    document.getElementById('infoBox').style.display='flex';
+    document.getElementById('infoFee').textContent=feeStr+' '+ns;
+    document.getElementById('infoMin').textContent=ethers.utils.formatUnits(minAmountLD,S.decimals)+' '+S.symbol;
+    document.getElementById('infoDst').textContent=dstEid.toString();
+    document.getElementById('infoDst').style.color=CHAINS[S.to].color;
+
+    if(S.isAdapter){
+      showStatus('info','토큰 approve 확인 중...');
+      var tk=new ethers.Contract(S.tokenAddr,ERC20_ABI,S.signer);
+      var al=await tk.allowance(S.wallet,S.oftCA);
+      if(al.lt(amountLD)){
+        showStatus('info','approve 트랜잭션 전송 중...');
+        var ax=await tk.approve(S.oftCA,ethers.constants.MaxUint256);
+        showStatus('info','approve 컨펌 대기 중...');
+        await ax.wait();
+      }
+    }
+
+    var ov={value:nativeFee};
+    if(S.gasMode==='custom'&&S.gasEth){
+      // ETH 단위 → Wei로 변환하여 gasPrice 설정
+      ov.gasPrice=ethers.utils.parseEther(S.gasEth);
+    }
+
+    showStatus('info','send 트랜잭션 전송 중...');
+    var tx=await oft.send(sp,[nativeFee,0],S.wallet,ov);
+    showStatus('info','트랜잭션 전송됨!\nHash: '+tx.hash+'\n컨펌 대기 중...');
+    var rc=await tx.wait();
+    showStatus('success','브릿지 성공!\nTx: '+tx.hash+'\nBlock: '+rc.blockNumber+'\n\nhttps://layerzeroscan.com/tx/'+tx.hash);
+
+    // refresh balance
+    var tk2=new ethers.Contract(S.tokenAddr,ERC20_ABI,S.provider);
+    S.balance=await tk2.balanceOf(S.wallet);
+    S.balanceFmt=ethers.utils.formatUnits(S.balance,S.decimals);
+    var bd=document.getElementById('balDisplay');
+    if(bd) bd.textContent=parseFloat(S.balanceFmt).toLocaleString(undefined,{maximumFractionDigits:4})+' '+S.symbol;
+  } catch(e) {
+    if(e.code===4001||e.code==='ACTION_REJECTED') showStatus('warn','사용자가 트랜잭션을 취소했습니다.');
+    else showStatus('error','에러: '+(e.reason||e.message));
+  }
+  updateBtn();
+}
+
+// ---- Status ----
+function showStatus(t,m){
+  var b=document.getElementById('statusBox'); b.style.display='block';
+  var c={info:['#0a1428','#1a3a5c','#60a5fa'],success:['#0a2814','#1a4a2a','#4ade80'],error:['#280a0a','#4a1a1a','#ef4444'],warn:['#28200a','#4a3a1a','#f0b90b']}[t]||['#0a1428','#1a3a5c','#60a5fa'];
+  b.style.background=c[0]; b.style.border='1px solid '+c[1]; b.style.color=c[2]; b.textContent=m;
+}
+function hideStatus(){ document.getElementById('statusBox').style.display='none'; }
+
+// ---- Events ----
+if(window.ethereum){
+  window.ethereum.on('chainChanged',function(chainId){
+    S.provider=new ethers.providers.Web3Provider(window.ethereum);
+    S.signer=S.provider.getSigner();
+    // 사용자가 MetaMask에서 직접 체인을 바꾼 경우 from 체인 동기화
+    var matched=Object.keys(CHAINS).find(function(k){ return parseInt(CHAINS[k].chainHex,16)===parseInt(chainId,16); });
+    if(matched&&matched!==S.from){
+      S.from=matched;
+      S.to=Object.keys(CHAINS).find(function(k){ return k!==matched; })||S.to;
+      S.scanned=false;
+      document.getElementById('scanResult').innerHTML='';
+      document.getElementById('maxBtn').style.display='none';
+      document.getElementById('infoBox').style.display='none';
+      renderChains();
+    }
+    updateUnits(); fetchNativeBalance(); updateBtn();
+  });
+  window.ethereum.on('accountsChanged',function(accs){
+    if(!accs||accs.length===0){ window.location.reload(); return; }
+    S.wallet=accs[0];
+    S.provider=new ethers.providers.Web3Provider(window.ethereum);
+    S.signer=S.provider.getSigner();
+    S.scanned=false; S.balance=null; S.balanceFmt='0';
+    document.getElementById('walletBtn').textContent='● '+S.wallet.slice(0,6)+'...'+S.wallet.slice(-4);
+    document.getElementById('scanResult').innerHTML='';
+    document.getElementById('maxBtn').style.display='none';
+    document.getElementById('infoBox').style.display='none';
+    updateScan(); updateBtn(); fetchNativeBalance();
+  });
+}
+
+window.addEventListener('load',function(){
+  if(typeof ethers==='undefined'){ showStatus('error','ethers.js 로딩 실패'); return; }
+  if(!window.ethereum) showStatus('warn','MetaMask가 감지되지 않았습니다.');
+});
+</script>
+</body>
+</html>
